@@ -1,0 +1,85 @@
+version: "3.9"
+
+networks:
+  monitoring:
+    driver: bridge
+
+services:
+  web:
+    build:
+      context: ./
+    volumes:
+      - logs-volume:/logs
+    command: node index.js
+    expose:
+      - 4500
+    ports:
+      - 4500:4500
+    networks:
+      - monitoring
+
+  promtail:
+    image: grafana/promtail:2.5.0
+    volumes:
+      - logs-volume:/logs
+      - ./promtail-config.yml:/etc/promtail/config.yml
+    command: -config.file=/etc/promtail/config.yml
+    links:
+      - web
+    networks:
+      - monitoring
+
+  prometheus:
+    image: prom/prometheus:v2.20.1
+    volumes:
+      - ./prometheus-config.yaml:/etc/prometheus/config.yml
+      - prometheus_data:/prometheus
+    command: --config.file=/etc/prometheus/config.yml
+    ports:
+      - 9090:9090
+    expose:
+      - 9090
+    networks:
+      - monitoring
+
+  grafana:
+    image: grafana/grafana:latest
+    depends_on:
+      - prometheus
+    ports:
+      - 3000:3000
+    volumes:
+      - grafana_data:/var/lib/grafana
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: "admin" # Senha de administrador, altere conforme necessário
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    networks:
+      - monitoring
+
+  loki:
+    image: grafana/loki:latest
+    ports:
+      - "3100:3100"
+    networks:
+      - monitoring
+    volumes:
+      - loki_data:/loki
+    command: -config.file=/etc/loki/local-config.yaml
+
+  collector:
+    image: otel/opentelemetry-collector:0.23.0
+    command: "--config /etc/otel-config.yaml"
+    volumes:
+      - ./otel-config.yml:/etc/otel-config.yaml
+    ports:
+      - 14268:14268
+    expose:
+      - 14268
+    networks:
+      - monitoring
+
+volumes:
+  logs-volume:
+  prometheus_data:
+  grafana_data:
+  loki_data:
